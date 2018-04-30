@@ -1,0 +1,155 @@
+---
+title: "Angewandte Forschungsmethodik I: Strukturgleichungsmodellierung I 
+ (SS 18)"
+author: 'Übungsblatt 2: Fabio Votta, 2891518'
+date: "30/04/2018"
+output:
+  pdf_document:
+    fig_caption: yes
+    keep_tex: yes
+header-includes:
+- \usepackage{pdflscape}
+- \usepackage{booktabs}
+
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = T # Whether to display code along with its results
+                      , eval = T # Whether to evaluate the code and include its results
+                      , results = "hide" # this at deafult is in end much more efficient
+                      , cache = F # Whether to cache results for future renders (efficient!)
+                      , warning = F # Whether to display errors
+                      , message = F # Whether to display messages
+                      , error = F # mybe turn on
+                      , tidy = F # Whether to reformat code in a tidy way when displaying it
+                      #, root.dir = normalizePath('/Users/simonroth/Dropbox/methods/git/tidy_textmining/my_summary/') 
+                      #, root.dir = normalizePath("E:/Dropbox/methods/git/tidy_textmining")
+                      # in order to calculate relative paths
+                      , fig.width = 6
+                      , fig.height = 4
+                      , fig.align = "center"
+                      )
+```
+
+```{r packages, echo=FALSE, results='hide'}
+pacman::p_load(tidyverse, texreg, sjPlot, psych, BaylorEdPsych)
+
+# 
+# path_data <- "C:/Users/Fabio/Dropbox/8. Semester Master/SEM II/"
+
+theme_set(theme_classic())
+setwd(path_data)
+
+pa <- "C:/Users/Fabio/Dropbox/8. Semester Master/SEM II/allbus_2016.dta"
+
+data <- haven::read_stata(pa)
+```
+
+#**ALLBUS 2016 Datensatz. Filter für Westdeutschland, Staatsbürgerschaft und Nicht-Muslime.**
+
+```{r recoding, echo=T, figure=T,results='asis'}
+data<-subset(data,data$eastwest==1) #Filter for West-Germans
+data<-subset(data,data$german==1) # Filter for German citizen
+
+data2<-subset(data,data$rd03!=1) # Filter for non-Muslims removes 34 cases
+
+
+data2$mm02<-8-data2$mm02
+data2$mm05<-8-data2$mm05
+
+data2$mm02[data2$mm02==17]<-NA
+data2$mm05[data2$mm05==17]<-NA
+hist(data2$mm02)
+```
+
+##**Beschreibung Missing Values**
+
+Es zeigt sich dass nur 89 Fälle (4.3$\%$ aller Fälle) fehlen (Datensatz enthält nur Nicht-Muslime). Dies könnte eine unproblematische Zahl sein, es hängt allerdings ganz davon ab ob der Mechanismus der fehlenden Werte missing completely at random (MCAR), missing at random (MAR) oder missing not at random (MNAR) sind. Die ersten beiden Fälle sind eher unproblematisch, da die fehlenden Werte keinen Bias in die Daten einführen bzw. durch beobachtete Werte entzerrt werden können. MNAR Werte müssten allerdings als non-ignorable gewertet werden.
+
+```{r, echo = F, results = 'asis',  figure=T}
+
+data2$mlog<-0
+
+data2$mlog[data2$mm01==-9]<-1
+data2$mlog[data2$mm02==-9]<-1
+data2$mlog[data2$mm03==-9]<-1
+data2$mlog[data2$mm04==-9]<-1
+data2$mlog[data2$mm05==-9]<-1
+data2$mlog[data2$mm06==-9]<-1
+
+data2$educr<-data2$educ
+data2$educr[data2$educr==6]<-NA
+data2$educr[data2$educr==7]<-NA
+
+
+attach(data2)
+islambat<-data.frame(
+mm01,
+mm02,
+mm03,
+mm04,
+mm05,
+mm06)
+detach(data2)
+
+### clean from -11 and other NA
+islambat <- lapply(islambat, 
+            FUN =  function(x){ifelse(x < 0, NA, x)}) %>% as.data.frame()
+
+
+sjp.frq(data2$mlog,
+                coord.flip = TRUE, 
+        hjust = "bottom", title = "Missing Values der Itembatterie 'Islamophobie'")
+
+install.packages("mvnmle")
+TestMCARNormality(islambat)
+library(BaylorEdPsych)
+BaylorEdPsych::LittleMCAR(islambat)
+#?TestMCARNormality
+#stargazer(as.data.frame(description),summary=F)
+
+
+LittleMCAR(islambat[ !apply(islambat, 1, function(x) all(is.na(x))), -10])
+```
+
+\begin{table}[]
+\caption{Little's Test}
+\centering
+\begin{tabular}{@{}llr@{}}
+\toprule
+$\chi^2$      & df       & p-value     \\ \midrule
+90.727           & 0.57     & 0.057       \\ \bottomrule
+\end{tabular}
+\end{table}
+
+##**Beschreibung Little's Test**
+
+Der MCAR Test nach Little ist unter dem $95\%$ Signifikanzniveau, was bedeutet dass die fehlenden Werte als MCAR bezeichnet werden können. Allerdings ist der Wert sehr nah an der Grenze und sollte vielleicht doch eher mit Vorsicht gewertet werden.
+
+```{r, echo = F, results = 'asis',  figure=T}
+
+data2$sexr<-data2$sex-1
+
+attach(data2)
+islambat2<-data.frame(mlog,
+sexr,
+age,
+educr)
+detach(data2)
+
+### clean from -11 and other NA
+islambat <- lapply(islambat2, 
+            FUN =  function(x){ifelse(x < 0, NA, x)}) %>% as.data.frame()
+
+m1 <- glm(mlog ~.,family=binomial(link='logit'),data=islambat2)
+
+texreg(m1)
+
+```
+
+
+##**Beschreibung Logistische Regression**
+
+Die Logistische Regression mit der dichotomen abhängigen Variable 1=Fehlend und 0=Beobachtet führt zu dem Ergebnis dass keiner der unabhängigen Variablen einen signifikanten Einfluss auf die missing values haben. Es kann daher vorläufig davon ausgegangen werden dass die fehlnden Werte weder auf beobachtete noch unbeobachtete Werte basieren (und damit MCAR sind).
+
+
+
