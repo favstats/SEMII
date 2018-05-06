@@ -1,0 +1,139 @@
+---
+title: "Angewandte Forschungsmethodik I: Strukturgleichungsmodellierung I 
+ (SS 18)"
+author: 'Übungsblatt 3: Fabio Votta, 2891518'
+date: "07/05/2018"
+output:
+  pdf_document:
+    fig_caption: yes
+    keep_tex: yes
+header-includes:
+- \usepackage{pdflscape}
+- \usepackage{booktabs}
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = T # Whether to display code along with its results
+                      , eval = T # Whether to evaluate the code and include its results
+                      , results = "hide" # this at deafult is in end much more efficient
+                      , cache = F # Whether to cache results for future renders (efficient!)
+                      , warning = F # Whether to display errors
+                      , message = F # Whether to display messages
+                      , error = F # mybe turn on
+                      , tidy = F # Whether to reformat code in a tidy way when displaying it
+                      #, root.dir = normalizePath('/Users/simonroth/Dropbox/methods/git/tidy_textmining/my_summary/') 
+                      #, root.dir = normalizePath("E:/Dropbox/methods/git/tidy_textmining")
+                      # in order to calculate relative paths
+                      , fig.width = 6
+                      , fig.height = 4
+                      , fig.align = "center"
+                      )
+```
+
+```{r packages, echo=FALSE, results='hide'}
+pacman::p_load(tidyverse, texreg, sjPlot, sjmisc, psych, magrittr, mice, reshape2)
+
+allbus <- haven::read_spss("AD16.sav")
+
+# sjPlot::view_df(allbus)
+```
+
+# Recoding
+
+```{r recoding, echo=T, figure=T,results='asis'}
+
+allbus %<>% 
+  select(-mn11:-mn21) %>% #select(mm05) %>% table()
+  mutate(mm02 = 8 - mm02) %>% 
+  mutate(mm05 = 8 - mm05) %>% 
+  select(mm01:mm06, Alter, Bildung, Geschlecht)
+
+```
+
+# Imputation
+
+```{r}
+mice_allbus <- mice(allbus, method = "norm.nob", m = 1)
+
+imp_allbus <- complete(mice_allbus)
+
+names(imp_allbus) <- paste0(names(imp_allbus), "_imp")
+```
+
+# Merging
+
+```{r}
+combined_allbus <- allbus %>% 
+  cbind(imp_allbus) 
+  
+combined_allbus %>% 
+  sjmisc::descr() %>% 
+  as.data.frame() %>% 
+  select(-type, -label, -se:-trimmed) %>% 
+  arrange(variable) %>% 
+  knitr::kable()
+```
+
+# Correlation Matrices
+
+```{r, fig.align='center', fig.width=15, fig.height=10}
+ggheatmap <- function(.data) {
+  
+ library(reshape2)
+ 
+ cormat <- round(cor(.data, use = "pairwise.complete.obs"),3)
+ 
+ # Get upper triangle of the correlation matrix
+ get_upper_tri <- function(cormat){
+     cormat[lower.tri(cormat)] <- NA
+     return(cormat)
+   }
+ 
+ reorder_cormat <- function(cormat){
+ # Use correlation between variables as distance
+ dd <- as.dist((1-cormat)/2)
+ hc <- hclust(dd)
+ cormat <- cormat[hc$order, hc$order]
+ }
+ 
+ # Reorder the correlation matrix
+ #cormat <- reorder_cormat(cormat)
+ upper_tri <- get_upper_tri(cormat)
+ # Melt the correlation matrix
+ melted_cormat <- melt(upper_tri, na.rm = TRUE) %>% 
+   mutate(value = sprintf('%.2f', value, 2)) %>% 
+   mutate(value = as.numeric(value))
+ # Create a ggheatmap
+ ggplot(melted_cormat, aes(Var2, Var1, fill = value)) +
+  geom_tile(color = "white")+
+  scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+    midpoint = 0, limit = c(-1,1), space = "Lab", 
+     name="Pearson Correlation\n") +
+  ggthemes::theme_hc()+ # minimal theme
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+     size = 12, hjust = 1))+
+ # coord_fixed()  + 
+ geom_text(aes(Var2, Var1, label = value), color = "black", size = 4) +
+ theme(
+   axis.title.x = element_blank(),
+   axis.title.y = element_blank(),
+   panel.grid.major = element_blank(),
+   panel.border = element_blank(),
+   panel.background = element_blank(),
+   axis.ticks = element_blank(),
+   legend.justification = c(1, 0),
+   legend.position = c(0.7, 0.8),
+   legend.title = element_text(size = 20),
+   axis.ticks.length = unit(2, "cm"),
+   legend.direction = "horizontal")+
+   guides(fill = guide_colorbar(barwidth = 30, barheight = 1.5,
+                 title.position = "top", title.hjust = 0.5))
+}
+
+ggheatmap(combined_allbus)
+
+```
+
+
+
